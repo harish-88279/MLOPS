@@ -1,10 +1,9 @@
 name: MLOps V2 - Train and Deploy
 
-# Trigger this on push to the 'main' branch
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # Allows you to run it manually
+  workflow_dispatch:
 
 jobs:
   train-and-trigger-deploy:
@@ -25,15 +24,17 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run training script
-      # This step is now much simpler!
-      # We just need to give the DagsHub library permission
-      # to write to our repo, which it has automatically.
+      # --- THIS IS THE KEY CHANGE ---
+      # We are now passing all three secrets to the script
       env:
-          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }} # Use DagsHub token
+        MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+        MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
       run: python train.py
+      # --------------------------------
 
     - name: Trigger Render Deploy
-      if: success() # Only run if training was successful
+      if: success()
       run: |
         echo "Training complete. Triggering Render deploy..."
         curl "${{ secrets.RENDER_DEPLOY_HOOK }}"
