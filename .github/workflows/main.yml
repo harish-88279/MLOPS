@@ -1,4 +1,4 @@
-name: MLOps V2 - Train and Deploy
+name: MLOps V2 - Train, Validate, and Deploy
 
 on:
   push:
@@ -6,14 +6,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  train-and-trigger-deploy:
+  train-validate-and-deploy:
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Set up Python 3.9
+    - name. Set up Python 3.9
       uses: actions/setup-python@v4
       with:
         python-version: 3.9
@@ -24,17 +24,24 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run training script
-      # --- THIS IS THE KEY CHANGE ---
-      # We are now passing all three secrets to the script
       env:
         MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
         MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
         MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
       run: python train.py
-      # --------------------------------
+
+    # --- THIS IS THE NEW STEP ---
+    - name: Run validation script
+      env:
+        MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+        MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+      run: python validate.py
+    # -------------------------------
 
     - name: Trigger Render Deploy
+      # This step will *only* run if all previous steps (including validation) succeed
       if: success()
       run: |
-        echo "Training complete. Triggering Render deploy..."
+        echo "Training and Validation successful. Triggering Render deploy..."
         curl "${{ secrets.RENDER_DEPLOY_HOOK }}"
