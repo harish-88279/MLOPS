@@ -3,7 +3,7 @@ from pydantic import BaseModel
 import pandas as pd
 import mlflow
 import os
-from mlflow.tracking import MlflowClient # <-- NEW IMPORT
+from mlflow.tracking import MlflowClient
 
 print("Starting API server...")
 
@@ -17,11 +17,9 @@ else:
 # -----------------------------------------------
 
 MODEL_NAME = "iris-classifier"
-
 app = FastAPI(title="MLOps Demo API V2")
 model = None 
 
-# --- 2. THIS FUNCTION IS NEW ---
 def load_production_model():
     global model
     if not MLFLOW_URI:
@@ -30,27 +28,19 @@ def load_production_model():
     try:
         client = MlflowClient()
         print(f"Searching for latest version of model: {MODEL_NAME}")
-        
-        # Get all versions, sorted from newest to oldest
         latest_versions = client.get_latest_versions(name=MODEL_NAME)
-        
         if not latest_versions:
              print(f"Error: No versions found for model '{MODEL_NAME}'.")
              model = None
              return
-
-        # Get the latest one
         latest_version = latest_versions[0]
         model_uri = f"models:/{MODEL_NAME}/{latest_version.version}"
-
         print(f"Attempting to load model from: {model_uri} (Version: {latest_version.version})")
         model = mlflow.pyfunc.load_model(model_uri)
         print("Model loaded successfully.")
-        
     except Exception as e:
         print(f"Error loading production model: {e}")
         model = None
-# --------------------------------
 
 @app.on_event("startup")
 def startup_event():
@@ -59,27 +49,48 @@ def startup_event():
 @app.get("/")
 def read_root():
     if model:
-        # We change the message to be more accurate
         return {"message": f"Welcome! The latest version of '{MODEL_NAME}' is loaded and ready."}
     return {"message": "Welcome! Model is NOT loaded. Check Render logs."}
 
-# --- 3. THE REST OF THE FILE IS THE SAME ---
 class IrisFeatures(BaseModel):
     sepal_length: float
     sepal_width: float
     petal_length: float
     petal_width: float
 
+# --- THIS FUNCTION IS NOW FIXED ---
 @app.post("/predict")
 def predict_species(features: IrisFeatures):
     if model is None:
         return {"error": "Model is not loaded. Cannot make predictions."}
+    
     try:
-        data_df = pd.DataFrame([features.dict()])
+        # 1. Get the data from the API request
+        input_data = features.dict()
+
+        # 2. Rename keys to match the training data schema
+        #    This is the crucial fix
+        renamed_data = {
+            "sepal length (cm)": input_data['sepal_length'],
+            "sepal width (cm)": input_data['sepal_width'],
+            "petal length (cm)": input_data['petal_length'],
+            "petal width (cm)": input_data['petal_width']
+        }
+
+        # 3. Create the DataFrame with the *correct* column names
+        data_df = pd.DataFrame([renamed_data])
+        
+        # 4. Predict
         prediction_raw = model.predict(data_df)
         prediction_index = int(prediction_raw[0])
+        
         species_map = {0: "setosa", 1: "versicolor", 2: "virginica"}
         species_name = species_map.get(prediction_index, "Unknown")
-        return {"prediction_index": prediction_index, "prediction_species": species_name}
+        
+        return {
+            "prediction_index": prediction_index,
+            "prediction_species": species_name
+        }
     except Exception as e:
+        # Return the actual error to help with debugging
         return {"error": f"Prediction error: {str(e)}"}
