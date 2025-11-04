@@ -1,4 +1,5 @@
 import os
+import sys
 import pandas as pd
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
@@ -9,20 +10,19 @@ import mlflow.sklearn
 
 print("Starting training script...")
 
-# --- 1. MLflow setup (This part is correct) ---
+# --- 1. MLflow setup (No change) ---
 MLFLOW_URI = os.environ.get("MLFLOW_TRACKING_URI")
 MLFLOW_USER = os.environ.get("MLFLOW_TRACKING_USERNAME")
 MLFLOW_PASS = os.environ.get("MLFLOW_TRACKING_PASSWORD")
 
 if not MLFLOW_URI or not MLFLOW_USER or not MLFLOW_PASS:
     print("CRITICAL: MLflow credentials not set.")
-    exit(1)
+    sys.exit(1)
 
 mlflow.set_tracking_uri(MLFLOW_URI)
 print(f"Logging to remote MLflow server: {MLFLOW_URI}")
-# -----------------------------------------------
 
-# --- 2. Run the experiment ---
+# --- 2. Run the experiment (No change) ---
 mlflow.set_experiment("Iris-Classifier-Demo")
 
 with mlflow.start_run() as run:
@@ -43,24 +43,33 @@ with mlflow.start_run() as run:
     mlflow.log_param("max_iter", max_iter_param)
     mlflow.log_metric("accuracy", accuracy)
 
-    # --- 3. THIS IS THE MODIFIED BLOCK ---
+    # Log model artifact
     print("Logging model artifact...")
-    # Step 1: Log the model *without* registering it
     mlflow.sklearn.log_model(
         sk_model=model,
         artifact_path="model",
         input_example=X_train.head(5)
-        # We removed 'registered_model_name' from here
     )
-
-    # Step 2: Register the model explicitly
+    
+    # --- 3. THIS IS THE MODIFIED BLOCK ---
     print("Registering the model...")
     model_uri = f"runs:/{run.info.run_id}/model"
-    mlflow.register_model(
+    
+    # Register the model
+    registered_model = mlflow.register_model(
         model_uri=model_uri,
         name="iris-classifier"
     )
-    print("Model registered successfully.")
+    
+    # Get the new version number
+    new_version = registered_model.version
+    print(f"Model registered as Version: {new_version}")
+
+    # Save this version number to a file
+    with open("version.txt", "w") as f:
+        f.write(new_version)
+    
+    print(f"Saved version number {new_version} to version.txt")
     # -------------------------------------
 
     print(f"Run {run.info.run_id} finished.")
