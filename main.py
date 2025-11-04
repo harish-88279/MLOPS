@@ -47,7 +47,7 @@ class IrisFeatures(BaseModel):
     sepal_length: float
     sepal_width: float
     petal_length: float
-    petal_width
+    petal_width: float
 @app.post("/predict")
 def predict_species(features: IrisFeatures):
     if model is None:
