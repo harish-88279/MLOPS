@@ -3,11 +3,11 @@ from pydantic import BaseModel
 import pandas as pd
 import mlflow
 import os
-# --- NO "import dagshub" ---
+from mlflow.tracking import MlflowClient # <-- NEW IMPORT
 
 print("Starting API server...")
 
-# --- 1. REVERT to the original MLflow setup ---
+# --- 1. MLflow setup (This part is correct) ---
 MLFLOW_URI = os.environ.get("MLFLOW_TRACKING_URI")
 if MLFLOW_URI:
     mlflow.set_tracking_uri(MLFLOW_URI)
@@ -16,38 +16,60 @@ else:
     print("CRITICAL: MLFLOW_TRACKING_URI not set. Model will not load.")
 # -----------------------------------------------
 
-# --- 2. The rest is the same ---
 MODEL_NAME = "iris-classifier"
-MODEL_STAGE = "Production"
-# ... (all the API code remains unchanged)
+
 app = FastAPI(title="MLOps Demo API V2")
 model = None 
+
+# --- 2. THIS FUNCTION IS NEW ---
 def load_production_model():
     global model
     if not MLFLOW_URI:
         print("MLFLOW_URI not set, cannot load model.")
         return
     try:
-        model_uri = f"models:/{MODEL_NAME}/{MODEL_STAGE}"
-        print(f"Attempting to load model from: {model_uri}")
+        client = MlflowClient()
+        print(f"Searching for latest version of model: {MODEL_NAME}")
+        
+        # Get all versions, sorted from newest to oldest
+        latest_versions = client.get_latest_versions(name=MODEL_NAME)
+        
+        if not latest_versions:
+             print(f"Error: No versions found for model '{MODEL_NAME}'.")
+             model = None
+             return
+
+        # Get the latest one
+        latest_version = latest_versions[0]
+        model_uri = f"models:/{MODEL_NAME}/{latest_version.version}"
+
+        print(f"Attempting to load model from: {model_uri} (Version: {latest_version.version})")
         model = mlflow.pyfunc.load_model(model_uri)
         print("Model loaded successfully.")
+        
     except Exception as e:
         print(f"Error loading production model: {e}")
         model = None
+# --------------------------------
+
 @app.on_event("startup")
 def startup_event():
     load_production_model()
+
 @app.get("/")
 def read_root():
     if model:
-        return {"message": f"Welcome! The '{MODEL_NAME}' model (stage: {MODEL_STAGE}) is loaded and ready."}
-    return {"message": "Welcome! Model is NOT loaded. Check Render logs. Promote a model to 'Production' in MLflow."}
+        # We change the message to be more accurate
+        return {"message": f"Welcome! The latest version of '{MODEL_NAME}' is loaded and ready."}
+    return {"message": "Welcome! Model is NOT loaded. Check Render logs."}
+
+# --- 3. THE REST OF THE FILE IS THE SAME ---
 class IrisFeatures(BaseModel):
     sepal_length: float
     sepal_width: float
     petal_length: float
     petal_width: float
+
 @app.post("/predict")
 def predict_species(features: IrisFeatures):
     if model is None:
