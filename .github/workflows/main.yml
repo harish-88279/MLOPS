@@ -1,0 +1,39 @@
+name: MLOps V2 - Train and Deploy
+
+# Trigger this on push to the 'main' branch
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Allows you to run it manually
+
+jobs:
+  train-and-trigger-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run training script
+      # This step is now much simpler!
+      # We just need to give the DagsHub library permission
+      # to write to our repo, which it has automatically.
+      env:
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }} # Use DagsHub token
+      run: python train.py
+
+    - name: Trigger Render Deploy
+      if: success() # Only run if training was successful
+      run: |
+        echo "Training complete. Triggering Render deploy..."
+        curl "${{ secrets.RENDER_DEPLOY_HOOK }}"

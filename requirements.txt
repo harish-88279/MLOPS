@@ -1,0 +1,6 @@
+scikit-learn
+pandas
+mlflow
+fastapi
+uvicorn[standard]
+dagshub
